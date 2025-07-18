@@ -1,0 +1,26 @@
+apiVersion: aptify/v1alpha1
+kind: Repository
+releases:
+  - name: bookworm
+    origin: cairo.io
+    label: Cairo Desktop
+    suite: bookworm
+    components:
+      - name: stable
+        packages: &a1
+          - .packages/caido-desktop-v0.49.0-linux-x86_64.deb
+          - .packages/caido-desktop-v0.49.0-linux-aarch64.deb
+  - name: bullseye
+    origin: cairo.io
+    label: Cairo Desktop
+    suite: bullseye
+    components:
+      - name: stable
+        packages: *a1
+  - name: trixie
+    origin: cairo.io
+    label: Cairo Desktop
+    suite: trixie
+    components:
+      - name: stable
+        packages: *a1
