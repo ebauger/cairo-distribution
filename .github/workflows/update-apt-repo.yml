@@ -37,8 +37,8 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Dependencies and Verify Environment
-        run: bun run ci:setup
+      - name: Install Dependencies
+        run: bun install
 
       - name: Configure aptify GPG Key
         run: |
