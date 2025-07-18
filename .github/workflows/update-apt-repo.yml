@@ -40,12 +40,15 @@ jobs:
       - name: Install bun/node Dependencies
         run: bun install
 
-      - name: Install apt dependencies
+      - name: "Download and install aptify"
         run: |
-          curl -fsL https://apt.dpeckett.dev/signing_key.asc | sudo tee /etc/apt/keyrings/apt-dpeckett-dev-keyring.asc > /dev/null
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/apt-dpeckett-dev-keyring.asc] http://apt.dpeckett.dev $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/apt-dpeckett-dev.list > /dev/null
-          sudo apt update
-          sudo apt install aptify
+          wget https://github.com/dpeckett/aptify/releases/download/v0.8.0/aptify_0.8.0-1_amd64.deb
+          sudo apt install -y ./aptify_0.8.0-1_amd64.deb
+
+      - name: "Verify aptify installation"
+        run: |
+          which aptify
+          aptify --version
 
       - name: Configure aptify GPG Key
         run: |
