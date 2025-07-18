@@ -1,0 +1,61 @@
+{
+  "name": "cairo-distribution",
+  "version": "1.0.0",
+  "description": "Automated APT repository for Caido packages",
+  "main": "src/update_repo.ts",
+  "type": "module",
+  "scripts": {
+    "setup:dependencies": "echo 'Installing project dependencies...' && bun install && echo 'Installing Python dependencies...' && pip install aptify",
+    "setup:dev-env": "node -e \"require('fs').existsSync('.env.local') || require('fs').writeFileSync('.env.local', '# Local development environment variables\\nDEBUG=true\\n')\" && echo '✅ Development environment ready!'",
+    "setup": "npm run setup:dependencies && npm run setup:dev-env",
+    "verify-deps": "node -e \"const cmds = { bun: '--version', git: '--version', gpg: '--version', aptify: '--version' }; const exec = require('child_process').execSync; try { Object.keys(cmds).forEach(cmd => { console.log('Verifying ' + cmd + '...'); exec(cmd + ' ' + cmds[cmd]); }); console.log('✅ All dependencies verified!'); } catch (e) { console.error('❌ Missing dependency. Please check your setup: ' + e.message); process.exit(1); }\"",
+    "repo:update": "bun run src/update_repo.ts",
+    "repo:clean": "rm -rf temp_debs repo dist coverage .nyc_output *.log *.deb",
+    "repo:clean-all": "npm run repo:clean && rm -rf node_modules bun.lockb",
+    "dev": "bun --watch run src/update_repo.ts",
+    "lint": "eslint --cache 'src/**/*.ts' 'scripts/**/*.ts'",
+    "lint:fix": "npm run lint -- --fix",
+    "type-check": "tsc --noEmit",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:all": "npm run lint && npm run type-check && npm run test",
+    "deploy:check": "npm run test:all",
+    "deploy": "echo 'This command is intended for CI/CD. It runs all checks and then triggers the repository update. For manual deployment, first run \"npm run repo:update\" and then push to the main branch.' && npm run deploy:check && npm run repo:update",
+    "maint:sync-upstream": "git remote add upstream https://github.com/caido/distribution.git 2>/dev/null || true && git fetch upstream && git checkout main && git merge upstream/main && echo 'Upstream sync complete!'",
+    "maint:update-deps": "bun update",
+    "maint:security-check": "bun audit",
+    "status": "echo \"Git Branch: $(git branch --show-current 2>/dev/null || echo 'N/A')\" && echo \"Uncommitted changes: $(git status --porcelain | wc -l | xargs)\" && echo \"Last Commit: $(git log -1 --format='%h - %s (%cr)' 2>/dev/null || echo 'N/A')\"",
+    "health-check": "bun run scripts/health_check.ts",
+    "health-check:json": "bun run scripts/health_check.ts --json",
+    "info": "echo 'Project: Caido APT Repository' && echo 'See README.md and DEPLOYMENT.md for detailed information.'",
+    "//": "--- CI/CD HOOKS ---",
+    "ci:setup": "npm run setup:dependencies && npm run verify-deps",
+    "ci:test": "npm run test:all",
+    "ci:build": "npm run ci:test && npm run repo:update"
+  },
+  "keywords": [
+    "caido",
+    "apt",
+    "repository",
+    "debian",
+    "ubuntu",
+    "automation",
+    "bun",
+    "typescript"
+  ],
+  "author": "ebauger",
+  "license": "MIT",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "yaml": "^2.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
