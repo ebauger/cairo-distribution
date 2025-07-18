@@ -1,0 +1,66 @@
+name: Update APT Repository
+
+on:
+  schedule:
+    # Run daily at 6:00 AM UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch: # Allows manual triggering
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "aptify.yml"
+      - "package.json"
+      - "bun.lockb"
+      - ".github/workflows/update-apt-repo.yml"
+
+jobs:
+  update-repo:
+    name: Update APT Repository
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write # Required to deploy to GitHub Pages
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        # with:
+        #   # Fetch all history for accurate versioning and logs
+        #   fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies and Verify Environment
+        run: bun run ci:setup
+
+      - name: Configure aptify GPG Key
+        run: |
+          mkdir -p "$XDG_CONFIG_HOME/aptify"
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" > "$XDG_CONFIG_HOME/aptify/aptify_private.asc"
+
+      # - name: Configure Git
+      #   run: |
+      #     git config --global user.name "github-actions[bot]"
+      #     git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update APT Repository
+        run: |
+          echo "Starting APT repository update process..."
+          bun run repo:update
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./repo
+          keep_files: true # Important to not delete other files in the gh-pages branch
+          enable_jekyll: false
+          commit_message: "Update APT repository - ${{ github.sha }}"
