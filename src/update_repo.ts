@@ -1,12 +1,15 @@
 // src/update_repo.ts
+import { createWriteStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 
 // --- Configuration ---
 const CAIDO_API_URL = "https://api.caido.io/releases/latest";
-const DOWNLOAD_DIR = ".packages";
+const DOWNLOAD_DIR = "packages";
 const REPO_DIR = "repo";
 const APTIFY_CONFIG_PATH = "aptify.yml";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -143,11 +146,33 @@ async function downloadPackage(
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    await Bun.write(destinationPath, response);
+    if (!response.body) {
+      throw new Error(`Response body is null`);
+    }
+
+    const fileStream = createWriteStream(destinationPath);
+    // The response.body from fetch is a web stream (ReadableStream).
+    // We convert it to a Node.js Readable stream to pipe it to a file,
+    // which is more memory-efficient than buffering the whole file.
+    const bodyStream = Readable.fromWeb(response.body as any);
+
+    await finished(bodyStream.pipe(fileStream));
+
     console.log(`[DOWNLOAD] Successfully saved to ${destinationPath}`);
     return destinationPath;
   } catch (error) {
     console.error(`[ERROR] Failed to download ${pkg.url}:`, error);
+    // Cleanup partially downloaded file on error
+    try {
+      await fs.unlink(destinationPath);
+    } catch (cleanupError: any) {
+      if (cleanupError.code !== "ENOENT") {
+        console.warn(
+          `[WARN] Failed to cleanup partial file ${destinationPath}:`,
+          cleanupError,
+        );
+      }
+    }
     return null;
   }
 }
@@ -253,6 +278,16 @@ async function validateDependencies(): Promise<void> {
     );
     throw error;
   }
+
+  try {
+    await runCommand("curl", ["--version"]);
+    console.log(`[INFO] curl is available`);
+  } catch (error) {
+    console.error(
+      `[ERROR] curl is not installed or not in PATH. Please install it.`,
+    );
+    throw error;
+  }
 }
 
 /**
@@ -264,25 +299,47 @@ async function main(): Promise<void> {
 
   try {
     await validateDependencies();
+    console.log(`[TRACE] main: validateDependencies() finished.`);
+
     const config = await loadAptifyConfig();
     console.log(
       `[INFO] Loaded configuration for ${config.releases.length} releases`,
     );
+    console.log(`[TRACE] main: loadAptifyConfig() finished.`);
 
     const packagesToDownload = await getLatestCaidoPackages();
     console.log(
       `[INFO] Found ${packagesToDownload.length} packages to download`,
     );
+    console.log(`[TRACE] main: getLatestCaidoPackages() finished.`);
 
     await prepareDownloadDirectory();
+    console.log(`[TRACE] main: prepareDownloadDirectory() finished.`);
+
+    try {
+      // Check if curl is available, as it's required for downloading packages.
+      await runCommand("curl", ["--version"]);
+      console.log(`[TRACE] main: curl check finished.`);
+    } catch (error) {
+      console.error(
+        `[ERROR] curl is not installed or not in PATH. Please install it to proceed.`,
+      );
+      throw error;
+    }
 
     console.log(`[INFO] Starting concurrent downloads...`);
-    const downloadPromises = packagesToDownload.map((pkg) =>
-      downloadPackage(pkg, DOWNLOAD_DIR),
-    );
-    const downloadedPaths = (await Promise.all(downloadPromises)).filter(
-      (p): p is string => p !== null,
-    );
+    const downloadedPaths: string[] = [];
+    for (const pkg of packagesToDownload) {
+      console.log(`[TRACE] main: Downloading package ${pkg.filename}...`);
+      const downloadedPath = await downloadPackage(pkg, DOWNLOAD_DIR);
+      if (downloadedPath) {
+        downloadedPaths.push(downloadedPath);
+        console.log(`[TRACE] main: Finished downloading ${pkg.filename}.`);
+      } else {
+        console.log(`[TRACE] main: Failed to download ${pkg.filename}.`);
+      }
+    }
+    console.log(`[TRACE] main: All downloads attempted.`);
 
     if (downloadedPaths.length !== packagesToDownload.length) {
       console.warn(
@@ -299,10 +356,12 @@ async function main(): Promise<void> {
     console.log(
       `[INFO] Successfully downloaded ${downloadedPaths.length}/${packagesToDownload.length} packages`,
     );
+    console.log(`[TRACE] main: Package download checks finished.`);
 
     const relativePackagePaths = downloadedPaths.map((p) =>
       path.relative(rootDir, p),
     );
+    console.log(`[TRACE] main: Created relative package paths.`);
 
     // Update the configuration in memory to point to the new packages
     for (const release of config.releases) {
@@ -313,12 +372,15 @@ async function main(): Promise<void> {
         );
       }
     }
+    console.log(`[TRACE] main: Updated config in memory.`);
 
     // Save the updated configuration back to aptify.yml
     await saveAptifyConfig(config);
+    console.log(`[TRACE] main: Saved aptify.yml.`);
 
     console.log(`[INFO] Ensuring repository directory '${REPO_DIR}' exists...`);
     await fs.mkdir(path.join(rootDir, REPO_DIR), { recursive: true });
+    console.log(`[TRACE] main: Ensured repo directory exists.`);
 
     console.log(`[INFO] Building repository metadata...`);
     await runCommand("aptify", [
@@ -328,6 +390,7 @@ async function main(): Promise<void> {
       "--repository-dir",
       REPO_DIR,
     ]);
+    console.log(`[TRACE] main: aptify build finished.`);
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
@@ -342,6 +405,7 @@ async function main(): Promise<void> {
     process.exit(1);
   } finally {
     await cleanup();
+    console.log(`[TRACE] main: Cleanup finished.`);
   }
 }
 
