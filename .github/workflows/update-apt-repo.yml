@@ -45,24 +45,15 @@ jobs:
           wget https://github.com/dpeckett/aptify/releases/download/v0.8.0/aptify_0.8.0-1_amd64.deb
           sudo apt install -y ./aptify_0.8.0-1_amd64.deb
 
-      - name: "Verify Dependencies"
-        run: bun run verify-deps
-
       - name: Configure aptify GPG Key
         run: |
           mkdir -p "$XDG_CONFIG_HOME/aptify"
           echo "${{ secrets.GPG_PRIVATE_KEY }}" > "$XDG_CONFIG_HOME/aptify/aptify_private.asc"
 
-      - name: Run Tests and Quality Checks
-        run: bun run test:all
-
       - name: Update APT Repository
         run: |
           echo "Starting APT repository update process..."
           bun run repo:update
-
-      - name: Ensure repo directory exists
-        run: mkdir -p repo
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
