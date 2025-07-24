@@ -22,22 +22,22 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
-      pages: write # Required to deploy to GitHub Pages
+      contents: write
+      pages: write
+      id-token: write # Ensure GITHUB_TOKEN has write permissions
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        # with:
-        #   # Fetch all history for accurate versioning and logs
-        #   fetch-depth: 0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install bun/node Dependencies
+      - name: Install Dependencies
         run: bun install
 
       - name: "Download and install aptify"
@@ -45,25 +45,24 @@ jobs:
           wget https://github.com/dpeckett/aptify/releases/download/v0.8.0/aptify_0.8.0-1_amd64.deb
           sudo apt install -y ./aptify_0.8.0-1_amd64.deb
 
-      - name: "Verify aptify installation"
-        run: |
-          which aptify
-          aptify --version
+      - name: "Verify Dependencies"
+        run: bun run verify-deps
 
       - name: Configure aptify GPG Key
         run: |
           mkdir -p "$XDG_CONFIG_HOME/aptify"
           echo "${{ secrets.GPG_PRIVATE_KEY }}" > "$XDG_CONFIG_HOME/aptify/aptify_private.asc"
 
-      # - name: Configure Git
-      #   run: |
-      #     git config --global user.name "github-actions[bot]"
-      #     git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Run Tests and Quality Checks
+        run: bun run test:all
 
       - name: Update APT Repository
         run: |
           echo "Starting APT repository update process..."
           bun run repo:update
+
+      - name: Ensure repo directory exists
+        run: mkdir -p repo
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
@@ -71,6 +70,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./repo
-          keep_files: true # Important to not delete other files in the gh-pages branch
+          keep_files: false
           enable_jekyll: false
           commit_message: "Update APT repository - ${{ github.sha }}"
+          publish_branch: gh-pages
